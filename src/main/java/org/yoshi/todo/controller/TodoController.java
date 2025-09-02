@@ -1,78 +1,50 @@
 package org.yoshi.todo.controller;
 
-
-import org.yoshi.todo.dto.TodoDto;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.yoshi.todo.model.Todo;
+import org.yoshi.todo.repository.TodoRepository;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-import jakarta.validation.Valid;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
+import java.time.Duration;
 
 @RestController
 @RequestMapping("/api/todos")
 public class TodoController {
 
-    private final Map<Long, TodoDto> store = new ConcurrentHashMap<>();
-    private final AtomicLong idGen = new AtomicLong();
+    private final TodoRepository repo;
 
-    // Create a new todo
-    @PostMapping
-    public ResponseEntity<TodoDto> create(@Valid @RequestBody TodoDto dto) {
-        long id = idGen.incrementAndGet();
-        TodoDto saved = new TodoDto(id, dto.task(), dto.done());
-        store.put(id, saved);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    public TodoController(TodoRepository repo) {
+        this.repo = repo;
     }
 
-    // Get all todos with optional filtering
     @GetMapping
-    public List<TodoDto> getAll(@RequestParam(required = false) Boolean done, @RequestHeader(value = "X-Client-Id", required = false) String userId) {
-        System.out.println(userId == null ? "anonymous" : userId);
-        return store.values().stream()
-                .filter(t -> done == null || t.done() == done)
-                .toList();
+    public Flux<Todo> getAllTodos() {
+        return repo.findAll();
     }
 
-    // Get single todo by id
     @GetMapping("/{id}")
-    public ResponseEntity<TodoDto> getById(@PathVariable Long id) {
-        TodoDto todo = store.get(id);
-        return todo != null ? ResponseEntity.ok(todo)
-                : ResponseEntity.notFound().build();
+    public Mono<Todo> getTodoById(@PathVariable Long id) {
+        return repo.findById(id);
     }
 
-    // Update entire todo
-    @PutMapping("/{id}")
-    public ResponseEntity<TodoDto> update(@PathVariable Long id,
-                                          @Valid @RequestBody TodoDto dto) {
-        if (!store.containsKey(id)) {
-            return ResponseEntity.notFound().build();
-        }
-        TodoDto updated = new TodoDto(id, dto.task(), dto.done());
-        store.put(id, updated);
-        return ResponseEntity.ok(updated);
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<Todo> streamTodos() {
+        //return repo.streamTodos();//.delayElements(Duration.ofMillis(200));
+        return Flux.interval(Duration.ofMillis(66))
+                .flatMap(tick -> repo.findAll())
+                .distinct(Todo::id);
     }
 
-    // Partially update (only "done" flag for demo)
+
+    @PostMapping
+    public Mono<Todo> create(@RequestBody Todo todo) {
+        return repo.save(todo);
+    }
+
     @PatchMapping("/{id}")
-    public ResponseEntity<TodoDto> markDone(@PathVariable Long id,
-                                            @RequestParam boolean done) {
-        TodoDto existing = store.get(id);
-        if (existing == null) return ResponseEntity.notFound().build();
-        TodoDto updated = new TodoDto(id, existing.task(), done);
-        store.put(id, updated);
-        return ResponseEntity.ok(updated);
-    }
-
-    // Delete todo
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        return store.remove(id) != null
-                ? ResponseEntity.noContent().build()
-                : ResponseEntity.notFound().build();
+    public Mono<Todo> markDone(@PathVariable Long id, @RequestParam boolean done) {
+        return repo.update(id, done);
     }
 }
-
