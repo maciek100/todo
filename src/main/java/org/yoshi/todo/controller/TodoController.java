@@ -8,6 +8,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/todos")
@@ -31,10 +32,16 @@ public class TodoController {
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<Todo> streamTodos() {
-        //return repo.streamTodos();//.delayElements(Duration.ofMillis(200));
         return Flux.interval(Duration.ofMillis(66))
                 .flatMap(tick -> repo.findAll())
                 .distinct(Todo::id);
+    }
+
+    @GetMapping(value = "/completed", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<Todo> streamCompletedTodos() {
+        return Flux.interval(Duration.ofSeconds(11))
+                .flatMap(tick -> repo.findAll())
+                .filter(Todo::done);
     }
 
 
@@ -46,5 +53,15 @@ public class TodoController {
     @PatchMapping("/{id}")
     public Mono<Todo> markDone(@PathVariable Long id, @RequestParam boolean done) {
         return repo.update(id, done);
+    }
+
+    @GetMapping("/size")
+    public Mono<Integer> getSize () {
+        return Mono.just(repo.getSize());
+    }
+
+    @GetMapping("/stats")
+    public Map<Long, Long> getDoneStats () {
+        return repo.getDoneStats();
     }
 }
